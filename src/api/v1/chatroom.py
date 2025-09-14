@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.orm import Session
 from typing import List
 from datetime import datetime
-from google.generativeai import generative_models as genai
+import google.generativeai as genai
 from src.schemas.chatroom import ChatroomCreate, ChatroomResponse, MessageCreate, MessageResponse
 from src.models import Chatroom, Message, User
 from src.database.session import get_db
@@ -15,16 +15,18 @@ import logging
 router = APIRouter(prefix="/chatroom", tags=["chatroom"])
 logger = logging.getLogger(__name__)
 
-
 async def process_gemini_message(
     message_content: str,
-    chatroom_id: int, 
-    user_id: int,
-    db: Session
+    chatroom_id: int,
+    user_id: int
 ):
-    """Process Gemini API call in background"""
+    """Process Gemini API call in background with fresh DB session"""
+    # Create fresh database session for background task
+    from src.database.session import SessionLocal
+    db = SessionLocal()
+    
     try:
-        # ✅ Configure Gemini API key INSIDE the background task
+        # Configure Gemini API key
         genai.configure(api_key=settings.GEMINI_API_KEY)
         
         # Validate ownership
@@ -54,10 +56,8 @@ async def process_gemini_message(
         
     except Exception as e:
         logger.error(f"❌ Error in background task: {e}")
-        # Don't raise - this would crash the background task
     finally:
         db.close()
-
 
 # --- GET /chatroom — CACHED LIST OF CHATROOMS ---
 @router.get("", response_model=List[ChatroomResponse])
@@ -90,7 +90,6 @@ def list_chatrooms(
     logger.info(f"✅ Cached new chatroom list for user {current_user.id}")
     return chatroom_schemas
 
-
 # --- POST /chatroom — CREATE NEW CHATROOM ---
 @router.post("", response_model=ChatroomResponse, status_code=status.HTTP_201_CREATED)
 def create_chatroom(
@@ -113,7 +112,6 @@ def create_chatroom(
 
     return new_chat
 
-
 # --- GET /chatroom/{chatroom_id} — GET SINGLE CHATROOM DETAILS ---
 @router.get("/{chatroom_id}", response_model=ChatroomResponse)
 def get_chatroom(
@@ -134,7 +132,6 @@ def get_chatroom(
         raise HTTPException(status_code=404, detail="Chatroom not found")
 
     return chatroom
-
 
 # --- DELETE /chatroom/{chatroom_id} — DELETE CHATROOM ---
 @router.delete("/{chatroom_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -162,7 +159,6 @@ def delete_chatroom(
     invalidate_chatrooms_cache(str(current_user.id))
     logger.info(f"✅ Deleted chatroom {chatroom_id} and invalidated cache for user {current_user.id}")
 
-
 # --- POST /chatroom/{chatroom_id}/message — SEND MESSAGE TO GEMINI (ASYNC) ---
 @router.post("/{chatroom_id}/message", response_model=MessageResponse, status_code=status.HTTP_202_ACCEPTED)
 def send_message(
@@ -170,7 +166,7 @@ def send_message(
     message_data: MessageCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    background_tasks: BackgroundTasks = BackgroundTasks()  # <-- Inject dependency
+    background_tasks: BackgroundTasks = BackgroundTasks()
 ):
     """
     Sends a user message and triggers an async Gemini API call via FastAPI BackgroundTasks.
@@ -221,20 +217,18 @@ def send_message(
     db.commit()
     db.refresh(user_message)
 
-    # ✅ TRIGGER ASYNC GEMINI CALL USING BACKGROUND TASKS (NO CELERY!)
     background_tasks.add_task(
         process_gemini_message,
         message_content=message_data.content,
         chatroom_id=chatroom_id,
-        user_id=current_user.id,
-        db=db
+        user_id=current_user.id
+        # ← Removed db=db parameter
     )
 
     logger.info(f"✅ Async Gemini task triggered for message {user_message.id} from user {current_user.id}")
 
     # Return 202 Accepted immediately — async processing in progress
     return user_message
-
 
 # --- GET /chatroom/{chatroom_id}/messages — FETCH ALL MESSAGES IN CHATROOM ---
 @router.get("/{chatroom_id}/messages", response_model=List[MessageResponse])
