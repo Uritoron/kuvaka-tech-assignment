@@ -18,3 +18,11 @@ class Token(BaseModel):
 
 class TokenData(BaseModel):
     mobile_number: Optional[str] = None
+
+
+class ForgotPasswordRequest(BaseModel):
+    mobile_number: str
+
+class ChangePasswordRequest(BaseModel):
+    old_password: str
+    new_password: str
