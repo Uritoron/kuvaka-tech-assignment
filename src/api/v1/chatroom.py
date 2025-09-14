@@ -7,6 +7,7 @@ from google.generativeai import generative_models as genai
 from src.schemas.chatroom import ChatroomCreate, ChatroomResponse, MessageCreate, MessageResponse
 from src.models import Chatroom, Message, User
 from src.database.session import get_db
+from src.core.config import settings
 from src.core.security import get_current_user
 from src.utils.cache import get_cached_chatrooms, cache_chatrooms, invalidate_chatrooms_cache
 import logging
@@ -17,24 +18,27 @@ logger = logging.getLogger(__name__)
 
 async def process_gemini_message(
     message_content: str,
-    chatroom_id: int,
+    chatroom_id: int, 
     user_id: int,
     db: Session
 ):
-    """Process Gemini API call in background (no worker needed)"""
+    """Process Gemini API call in background"""
     try:
+        # ✅ Configure Gemini API key INSIDE the background task
+        genai.configure(api_key=settings.GEMINI_API_KEY)
+        
         # Validate ownership
         user = db.query(User).filter(User.id == user_id).first()
         chatroom = db.query(Chatroom).filter(Chatroom.id == chatroom_id).first()
-
+        
         if not user or not chatroom:
             logger.error(f"❌ User or chatroom not found: user={user_id}, chatroom={chatroom_id}")
             return
-
+        
         # Call Gemini API
         model = genai.GenerativeModel('gemini-2.5-flash')
         response = model.generate_content(message_content)
-
+        
         # Save AI response to database
         ai_message = Message(
             content=response.text,
@@ -45,12 +49,12 @@ async def process_gemini_message(
         db.add(ai_message)
         db.commit()
         db.refresh(ai_message)
-
+        
         logger.info(f"✅ AI response saved for chatroom {chatroom_id}: {response.text[:50]}...")
-
+        
     except Exception as e:
         logger.error(f"❌ Error in background task: {e}")
-        raise
+        # Don't raise - this would crash the background task
     finally:
         db.close()
 
