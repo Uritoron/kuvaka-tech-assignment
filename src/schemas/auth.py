@@ -4,6 +4,7 @@ from typing import Optional
 
 class UserCreate(BaseModel):
     mobile_number: str = Field(..., min_length=10, max_length=15)
+    password:str = Field(..., min_length=10, max_length=15)
 
 class OTPRequest(BaseModel):
     mobile_number: str = Field(..., min_length=10, max_length=15)
