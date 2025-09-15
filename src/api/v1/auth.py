@@ -77,7 +77,7 @@ def forgot_password(request: ForgotPasswordRequest):
         "otp": otp # For assignment/demo purposes only
     }
 
-#@router.post("/change-password", status_code=status.HTTP_200_OK)
+@router.post("/change-password", status_code=status.HTTP_200_OK)
 def change_password(
     request: ChangePasswordRequest, # <-- Now only takes 'new_password'
     db: Session = Depends(get_db),
