@@ -23,6 +23,8 @@ class TokenData(BaseModel):
 class ForgotPasswordRequest(BaseModel):
     mobile_number: str
 
+# --- UPDATED: ChangePasswordRequest ---
 class ChangePasswordRequest(BaseModel):
-    old_password: str
-    new_password: str
+    # The user only needs to provide the NEW password.
+    # The old password is not required because the user is already authenticated via JWT.
+    new_password: str = Field(..., min_length=8)  # Enforce a minimum password length for security

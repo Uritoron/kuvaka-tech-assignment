@@ -21,7 +21,17 @@ def signup(user: UserCreate, db: Session = Depends(get_db)):
     db_user = db.query(User).filter(User.mobile_number == user.mobile_number).first()
     if db_user:
         raise HTTPException(status_code=400, detail="Mobile number already registered")
-    new_user = User(mobile_number=user.mobile_number)
+    
+    # Prepare user data for creation
+    user_data = {
+        "mobile_number": user.mobile_number
+    }
+    # If a password is provided during signup, hash and store it
+    if user.password:
+        user_data["hashed_password"] = get_password_hash(user.password)
+    # If no password is provided, hashed_password will be NULL/default in DB
+    
+    new_user = User(**user_data) # Create user instance with prepared data
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
@@ -67,22 +77,17 @@ def forgot_password(request: ForgotPasswordRequest):
         "otp": otp # For assignment/demo purposes only
     }
 
-# --- POST /auth/change-password ---
-@router.post("/change-password", status_code=status.HTTP_200_OK)
+#@router.post("/change-password", status_code=status.HTTP_200_OK)
 def change_password(
-    request: ChangePasswordRequest,
+    request: ChangePasswordRequest, # <-- Now only takes 'new_password'
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user) # Requires authentication
+    current_user: User = Depends(get_current_user) # <-- Already authenticated via JWT
 ):
     """
     Allows the authenticated user to change their password.
-    Requires the old password for verification and the new password.
+    Requires no old password as the user is already verified via JWT.
     """
-    # Verify old password
-    if not verify_password(request.old_password, current_user.hashed_password):
-        raise HTTPException(status_code=400, detail="Incorrect old password.")
-
-    # Hash new password
+    # Hash the new password
     new_hashed_password = get_password_hash(request.new_password)
 
     # Update user's password in the database
